@@ -2,33 +2,35 @@
 
 namespace imu_pose
 {	
-	IMUPose::IMUPose(const Eigen::Vector3d &init_position,const Eigen::Vector3d &init_orientation)
+	//IMUPose::IMUPose(const Eigen::Vector3d &init_position,const Eigen::Vector3d &init_orientation)
+	IMUPose::IMUPose()
 	{
-		position_ = init_position;
-		orientation_ = init_orientation;
-		IMUPose.calibrate();
+		//position_ = init_position;
+		//orientation_ = init_orientation;
+		this->calibrate();
+		g_ << 0,0,9.8;
 	}
 	
 	IMUPose::~IMUPose(void)
 	{
 	}
 
-	void IMUPose::calibrate(const Eigen::Vector3d &angles)
+	void IMUPose::calibrate()//const Eigen::Vector3d &angles)
 	{
 		orientation_ << 0,0,0;
 		position_ << 0,0,0;
 	}
 	
-	void IMUPose::update(const Eigen::Vector3d &accel,const Eigen::Vector3d &w,const double dt)
+	void IMUPose::update(const Eigen::Vector3d &accel,const Eigen::Vector3d &w,const double &dt)
 	{
-		this.transform_update();
+		this->transform_update();
 		
 		//TODO: remove bias
 		
 		//ANGULAR POSITION
 		ang_speed_ = attit_trans_mat * w;
-		delta_orientation = ang_speed_ * dt;
-		orientation_ = orientation_ + delta_orientation;
+		delta_orientation_ = ang_speed_ * dt;
+		orientation_ = orientation_ + delta_orientation_;
 
 		//LINEAR POSITION
 		accel_ = transf_mat * accel - g_;	

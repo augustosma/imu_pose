@@ -3,7 +3,7 @@
 #include <ros/node_handle.h>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/JointState.h>
-#include <sensor_msgs/IMU.h>
+#include <sensor_msgs/Imu.h>
 #include <tf/tfMessage.h>
 #include <tf/transform_datatypes.h>
 
@@ -22,7 +22,7 @@ class IMUPosePublisher
 
 		ros::Publisher imuPosePub_;
 		ros::Publisher tfPub_;
-		ros::Subscriber rawIMUSubscriber_;
+		ros::Subscriber imuRawSub_;
 		
 		imu_pose::IMUPose imu_pose_;
 		
@@ -57,17 +57,19 @@ IMUPosePublisher::~IMUPosePublisher(void)
 	imuRawSub_.shutdown();
 }
 
-IMUPosePublisher::imuCB(const sensor_msgs::Imu::ConstPtr &imu_msg)
+void IMUPosePublisher::imuCB(const sensor_msgs::Imu::ConstPtr &imu_msg)
 {
 	//ros::Time time = ros::Time::now();
 	
-	Eigen::Vector3d ang_vel << imu_msg.angular_velocity.x,imu_msg.angular_velocity.y,imu_msg.angular_velocity.z;
-	Eigen::Vector3d acc << imu_msg.linear_acceleration.x,imu_msg.linear_acceleration.y,imu_msg.linear_acceleration.z;
+	Eigen::Vector3d ang_vel;
+	ang_vel << imu_msg.angular_velocity.x,imu_msg.angular_velocity.y,imu_msg.angular_velocity.z;
+	Eigen::Vector3d acc;
+	acc << imu_msg.linear_acceleration.x,imu_msg.linear_acceleration.y,imu_msg.linear_acceleration.z;
 	
 	IMUPosePublisher::publish(acc, ang_vel, dt);
 }
 
-IMUPosePublisher::publish(const Eigen::Vector3d &accel,const Eigen::Vector3d &w, ) const
+void IMUPosePublisher::publish(const Eigen::Vector3d &accel,const Eigen::Vector3d &w, ) const
 {
 	ros::Time time = ros::Time::now();
 	double dt = time.toSec() - lastSamplingTime_.toSec();
@@ -162,150 +164,3 @@ int main(int argc,char* argv[])
 	return 0;
 }
 
-IMUPosePublisher::IMUPosePublisher(ros::NodeHandle node)//:
-	//wheelRadius_(2),odom_(wheelBase_,wheelRadius_)
-{
-	node_=node;
-
-	if(!node_.getParam("odometry_publisher/wheel_separation",wheelBase_))
-	{
-		ROS_ERROR("No 'wheel_separation' in node %s.",node_.getNamespace().c_str());
-		return;
-	}
-		
-	if(!node_.getParam("odometry_publisher/wheel_radius",wheelRadius_))
-	{
-		ROS_ERROR("No 'wheel_radius' in node %s.",node_.getNamespace().c_str());
-		return;
-	}
-	
-	odom_.setParams(wheelBase_,wheelRadius_);
-	phi_.setZero();
-	
-	odom_frame_id_="odom";
-	node_.param("odom_frame_id",odom_frame_id_,odom_frame_id_);
-		
-	base_frame_id_="base_link";
-	node_.param("base_frame_id",base_frame_id_,base_frame_id_);
-
-	odomPub_=node_.advertise<nav_msgs::Odometry>("odom",100);
-	
-	tfPub_=node_.advertise<tf::tfMessage>("/tf",100);
-	
-	lastSamplingTime_=ros::Time::now();
-	
-	jointStateSub_=node_.subscribe("joint_states",100,&OdometryPublisher::jointStateCB,this);
-}
-
-OdometryPublisher::~OdometryPublisher(void)
-{
-	tfPub_.shutdown();
-	odomPub_.shutdown();
-	jointStateSub_.shutdown();
-}
-
-void OdometryPublisher::jointStateCB(const sensor_msgs::JointState::ConstPtr &jointState)
-{
-	ros::Time time=jointState->header.stamp;
-	
-	// Incremental encoders sense angular displacement and
-	// not velocity
-	// phi[0] is the left wheel angular displacement
-	// phi[1] is the right wheel angular displacement
-	Eigen::Vector2d deltaPhi=-phi_;
-	for(unsigned int i=0;i < jointState->position.size() && i < phi_.size();i++)
-	{
-		phi_[i]=jointState->position[i];
-	}
-	deltaPhi+=phi_;
-
-	odom_.update(deltaPhi,time-lastSamplingTime_);
-	lastSamplingTime_=time;
-}
-
-void OdometryPublisher::publish(void) const
-{
-	ros::Time time=ros::Time::now();
-	
-	Eigen::Vector3d x;
-	Eigen::Vector2d u;
-	odom_.getPose(x);
-	odom_.getVelocity(u);
-
-	nav_msgs::Odometry odomMsg;
-	odomMsg.header.stamp=time;
-	odomMsg.header.frame_id=odom_frame_id_;
-	odomMsg.child_frame_id=base_frame_id_;
-        	        	                	
-	odomMsg.pose.pose.position.x=x[0];
-	odomMsg.pose.pose.position.y=x[1];
-	odomMsg.pose.pose.position.z=0;
-
-	odomMsg.pose.pose.orientation=tf::createQuaternionMsgFromYaw(x[2]);
-	
-	// Fake covariance
-	double pose_cov[]={1e-6, 1e-6, 1e-16,1e-16,1e-16,1e-9};
-	odomMsg.pose.covariance=boost::assign::list_of
-		(pose_cov[0]) (0)  (0)  (0)  (0)  (0)
-		(0)  (pose_cov[1]) (0)  (0)  (0)  (0)
-		(0)  (0)  (pose_cov[2]) (0)  (0)  (0)
-		(0)  (0)  (0)  (pose_cov[3]) (0)  (0)
-		(0)  (0)  (0)  (0)  (pose_cov[4]) (0)
-		(0)  (0)  (0)  (0)  (0)  (pose_cov[5]);
-
-
-	odomMsg.twist.twist.linear.x=u[0]*cos(x[2]);
-	odomMsg.twist.twist.linear.y=u[0]*sin(x[2]);
-	odomMsg.twist.twist.linear.z=0;
-	odomMsg.twist.twist.angular.x=0;
-	odomMsg.twist.twist.angular.y=0;
-	odomMsg.twist.twist.angular.z=u[1];
-		
-	//Fake covariance
-	double twist_cov[]={1e-6,1e-6,1e-16,1e-16,1e-16,1e-9};
-	odomMsg.twist.covariance=boost::assign::list_of
-		(twist_cov[0]) (0)  (0)  (0)  (0)  (0)
-		(0)  (twist_cov[1]) (0)  (0)  (0)  (0)
-		(0)  (0)  (twist_cov[2]) (0)  (0)  (0)
-		(0)  (0)  (0)  (twist_cov[3]) (0)  (0)
-		(0)  (0)  (0)  (0)  (twist_cov[4]) (0)
-		(0)  (0)  (0)  (0)  (0)  (twist_cov[5]);
-
-
-	odomPub_.publish(odomMsg);
-
-	tf::tfMessage tfMsg;        
-        tfMsg.transforms.resize(1);
-	tfMsg.transforms[0].transform.translation.z=0.0;
-	tfMsg.transforms[0].child_frame_id=base_frame_id_;
-	tfMsg.transforms[0].header.frame_id=odom_frame_id_;
-        
-	geometry_msgs::TransformStamped &odom_frame=tfMsg.transforms[0];
-	odom_frame.header.stamp=time;
-	odom_frame.transform.translation.x=x[0];
-	odom_frame.transform.translation.y=x[1];
-	odom_frame.transform.rotation=tf::createQuaternionMsgFromYaw(x[2]);
-	
-	tfPub_.publish(tfMsg);
-}
-
-int main(int argc,char* argv[])
-{
-	ros::init(argc,argv,"imu_pose_publisher");
-	ros::NodeHandle node;
-	
-	IMUPosePublisher IMUPosePublisher(node);
-	
-	int rate=100;
-	node.param("publish_rate",rate,rate);
-
-	ros::Rate loop(rate);
-	while(ros::ok())
-	{	
-		//IMUPosePublisher.publish();
-		
-		ros::spinOnce();
-		loop.sleep();
-	}
-	return 0;
-}

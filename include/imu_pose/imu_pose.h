@@ -13,13 +13,15 @@ namespace imu_pose
 	{
 		public:
 		IMUPose();
-		~IMUPose(void);
+//		IMUPose(const Eigen::Vector3d &init_position,const Eigen::Vector3d &init_orientation)
+		~IMUPose();
 		
-		void update(const Eigen::Vector3d &accel,const Eigen::Vector3d &w,const double &duration);
-		Eigen::Vector3d getPosition() const {return position_};
-		Eigen::Vector3d getOrientation() const {return orientation_};
+		void update(const Eigen::Vector3d &accel,const Eigen::Vector3d &w,const double &dt);
+		void calibrate(); //const Eigen::Vector3d &angles);
+		Eigen::Vector3d getPosition() const {return position_;}
+		Eigen::Vector3d getOrientation() const {return orientation_;}
 		//void getOrientationQuaternion();
-		void getPose(Eigen::Vector3d &x) const {x=x_;}
+		//void getPose(Eigen::Vector3d &x) const {x=x_;}
 				
 		private:		
 		//all in navigation frame
@@ -41,9 +43,10 @@ namespace imu_pose
 		//Eigen::Vector3d accel_bias_;
 		//Eigen::Vector3d oscil_bias_;
 		
-		Eigen::Vector3d g_ << 0,0,9.8;
+		Eigen::Vector3d g_;
 		
-		void transf_update();		
+		
+		void transform_update();		
 	};
 }
 #endif
