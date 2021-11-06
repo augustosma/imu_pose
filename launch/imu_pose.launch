@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<launch>
+	<arg name="headless" default="false"/>
+	<arg name="use_sim_time" default="true"/>
+	<node pkg="imu_pose" type="imu_pose_publisher" name="imu_pose_name" />
+	<arg name="imu_topic" default="imu"/>
+	<remap from="/$(arg imu_topic)" to="/imu"/>
+	
+</launch>		
